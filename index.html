@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestor de Pendientes y Emisiones en Vivo</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f7ff',
+                            100: '#e0effe',
+                            500: '#2563eb',
+                            600: '#1d4ed8',
+                            700: '#1e40af',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .modal-backdrop {
+            background-color: rgba(15, 23, 42, 0.55);
+            backdrop-filter: blur(4px);
+        }
+        .tab-btn {
+            border-bottom: 2px solid transparent;
+            color: #64748b;
+            font-weight: 500;
+        }
+        .tab-btn:hover {
+            color: #1e293b;
+        }
+        .tab-btn.active {
+            border-bottom-color: #2563eb;
+            color: #2563eb;
+            font-weight: 700;
+        }
+        .main-view {
+            display: none;
+        }
+        .main-view.active {
+            display: block;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+    <!-- Notificación Toast Flotante -->
+    <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- Header / Navbar -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="bg-brand-500 text-white p-2 rounded-xl shadow-md">
+                    <i data-lucide="check-square" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold text-slate-900 leading-tight">Sistema de Control Operativo</h1>
+                    <p class="text-xs text-slate-500 hidden sm:block">Pendientes y Emisiones por Integrante</p>
+                </div>
+            </div>
+
+            <!-- Navegación Principal: Pendientes vs Emisiones en Vivo -->
+            <div class="flex items-center space-x-2 bg-slate-100 p-1 rounded-xl">
+                <button id="nav-btn-pendientes" onclick="switchMainView('pendientes')" 
+                    class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-white text-slate-800 shadow-sm">
+                    <i data-lucide="list-todo" class="w-4 h-4 inline-block mr-1"></i>
+                    <span>Pendientes</span>
+                </button>
+                <button id="nav-btn-emisiones" onclick="switchMainView('emisiones')" 
+                    class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-600 hover:text-slate-900">
+                    <i data-lucide="radio" class="w-4 h-4 inline-block mr-1 text-red-500"></i>
+                    <span>Emisiones en Vivo</span>
+                </button>
+            </div>
+            
+            <div class="flex items-center space-x-3">
+                <button id="btn-open-create" onclick="toggleModal('modal-create', true)" 
+                    class="bg-brand-600 hover:bg-brand-700 text-white font-medium px-4 py-2.5 rounded-xl text-sm flex items-center space-x-2 transition-all shadow-sm hover:shadow active:scale-95">
+                    <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                    <span>Nuevo Pendiente</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
+        
+        <!-- VISTA 1: GESTOR DE PENDIENTES -->
+        <div id="view-pendientes" class="main-view active">
+            <!-- Summary Stats Cards -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Pendientes</p>
+                        <p id="stat-total" class="text-2xl font-bold text-slate-800 mt-1">0</p>
+                    </div>
+                    <div class="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
+                        <i data-lucide="layers" class="w-5 h-5"></i>
+                    </div>
+                </div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-semibold text-amber-600 uppercase tracking-wider">Activos</p>
+                        <p id="stat-active" class="text-2xl font-bold text-amber-700 mt-1">0</p>
+                    </div>
+                    <div class="p-2.5 bg-amber-50 text-amber-600 rounded-xl">
+                        <i data-lucide="clock" class="w-5 h-5"></i>
+                    </div>
+                </div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-semibold text-purple-600 uppercase tracking-wider">Canal Principal</p>
+                        <p id="stat-top-channel" class="text-lg font-bold text-purple-700 mt-1 truncate max-w-[100px]">-</p>
+                    </div>
+                    <div class="p-2.5 bg-purple-50 text-purple-600 rounded-xl">
+                        <i data-lucide="filter" class="w-5 h-5"></i>
+                    </div>
+                </div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-semibold text-emerald-600 uppercase tracking-wider">Resueltos</p>
+                        <p id="stat-resolved" class="text-2xl font-bold text-emerald-700 mt-1">0</p>
+                    </div>
+                    <div class="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl">
+                        <i data-lucide="check-circle-2" class="w-5 h-5"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation Tabs & Search -->
+            <div class="flex flex-col gap-4 mb-6 border-b border-slate-200 pb-2">
+                <div class="flex items-center justify-between flex-wrap gap-4">
+                    <div class="flex space-x-2 sm:space-x-4 text-sm font-medium overflow-x-auto pb-1 w-full lg:w-auto" id="tabs-bar">
+                        <button id="tab-all" onclick="switchCategory('all')" 
+                            class="tab-btn active pb-3 px-2 flex items-center space-x-1.5 whitespace-nowrap">
+                            <span>Todos</span>
+                            <span id="badge-all" class="bg-slate-100 text-slate-700 text-xs px-2 py-0.5 rounded-full font-bold">0</span>
+                        </button>
+                        <button id="tab-correo" onclick="switchCategory('Correo')" 
+                            class="tab-btn pb-3 px-2 flex items-center space-x-1.5 whitespace-nowrap">
+                            <i data-lucide="mail" class="w-4 h-4 text-sky-500"></i>
+                            <span>Correo</span>
+                            <span id="badge-correo" class="bg-sky-100 text-sky-800 text-xs px-2 py-0.5 rounded-full font-bold">0</span>
+                        </button>
+                        <button id="tab-whatsapp" onclick="switchCategory('WhatsApp')" 
+                            class="tab-btn pb-3 px-2 flex items-center space-x-1.5 whitespace-nowrap">
+                            <i data-lucide="message-square" class="w-4 h-4 text-emerald-500"></i>
+                            <span>WhatsApp</span>
+                            <span id="badge-whatsapp" class="bg-emerald-100 text-emerald-800 text-xs px-2 py-0.5 rounded-full font-bold">0</span>
+                        </button>
+                        <button id="tab-recepcion" onclick="switchCategory('Recepción')" 
+                            class="tab-btn pb-3 px-2 flex items-center space-x-1.5 whitespace-nowrap">
+                            <i data-lucide="building" class="w-4 h-4 text-indigo-500"></i>
+                            <span>Recepción</span>
+                            <span id="badge-recepcion" class="bg-indigo-100 text-indigo-800 text-xs px-2 py-0.5 rounded-full font-bold">0</span>
+                        </button>
+                        <button id="tab-facturacion" onclick="switchCategory('Facturación')" 
+                            class="tab-btn pb-3 px-2 flex items-center space-x-1.5 whitespace-nowrap">
+                            <i data-lucide="receipt" class="w-4 h-4 text-amber-500"></i>
+                            <span>Facturación</span>
+                            <span id="badge-facturacion" class="bg-amber-100 text-amber-800 text-xs px-2 py-0.5 rounded-full font-bold">0</span>
+                        </button>
+                        <button id="tab-resolved" onclick="switchCategory('resolved')" 
+                            class="tab-btn pb-3 px-2 flex items-center space-x-1.5 whitespace-nowrap">
+                            <i data-lucide="check-circle" class="w-4 h-4 text-emerald-600"></i>
+                            <span>Historial Resueltos</span>
+                            <span id="badge-resolved" class="bg-slate-200 text-slate-800 text-xs px-2 py-0.5 rounded-full font-bold">0</span>
+                        </button>
+                    </div>
+
+                    <div class="relative w-full lg:w-72">
+                        <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                        <input type="text" id="search-input" oninput="render()" placeholder="Buscar cliente, solicitante, correo o motivo..." 
+                            class="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent shadow-sm">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tasks Container Grid -->
+            <div id="tasks-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                <!-- Populated dynamically -->
+            </div>
+
+            <div id="empty-state" class="hidden text-center py-16 bg-white rounded-3xl border border-dashed border-slate-300 my-4">
+                <div class="inline-flex p-4 bg-slate-100 rounded-full text-slate-400 mb-3">
+                    <i data-lucide="inbox" class="w-8 h-8"></i>
+                </div>
+                <h3 class="text-base font-semibold text-slate-700">No hay tareas en esta sección</h3>
+                <p class="text-sm text-slate-500 max-w-sm mx-auto mt-1">Todas las observaciones están al día o no coinciden con la búsqueda.</p>
+            </div>
+        </div>
+
+        <!-- VISTA 2: EMISIONES EN VIVO (TABLA DE INTEGRANTES CON DESCONTADOR) -->
+        <div id="view-emisiones" class="main-view">
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-6">
+                <div class="flex items-center justify-between flex-wrap gap-3 mb-4">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <span class="relative flex h-3 w-3">
+                              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                              <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                            </span>
+                            Emisiones en Vivo por Integrante
+                        </h2>
+                        <p class="text-xs text-slate-500">Asigna la cantidad de emisiones a cada persona y el intervalo en minutos para el descuento automático.</p>
+                    </div>
+                    <button onclick="playAlertSound()" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center gap-1.5 transition-colors">
+                        <i data-lucide="volume-2" class="w-3.5 h-3.5 text-brand-600"></i>
+                        <span>Probar sonido de alerta</span>
+                    </button>
+                </div>
+
+                <!-- Tabla de Integrantes -->
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50 text-slate-600 text-xs uppercase font-semibold border-b border-slate-200">
+                                <th class="py-3 px-4">Integrante</th>
+                                <th class="py-3 px-4 w-32">Cant. Inicial</th>
+                                <th class="py-3 px-4 w-36">Intervalo (Min)</th>
+                                <th class="py-3 px-4 text-center">Descontador en Vivo</th>
+                                <th class="py-3 px-4 text-center w-48">Estado Operativo</th>
+                                <th class="py-3 px-4 text-center w-36">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="emisiones-table-body" class="divide-y divide-slate-100 text-sm">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Modal: Nuevo Pendiente -->
+    <div id="modal-create" class="fixed inset-0 z-50 hidden modal-backdrop flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden transform transition-all">
+            <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                <h3 class="font-bold text-slate-800 flex items-center space-x-2">
+                    <i data-lucide="alert-circle" class="w-5 h-5 text-brand-500"></i>
+                    <span>Registrar Nuevo Pendiente</span>
+                </h3>
+                <button onclick="toggleModal('modal-create', false)" class="text-slate-400 hover:text-slate-600 rounded-lg p-1 hover:bg-slate-100">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            
+            <form id="form-create" onsubmit="handleCreateTask(event)" class="p-6 space-y-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Nombre del Cliente (Opcional)</label>
+                        <input type="text" id="create-client-name" placeholder="Ej. Empresa ABC S.A.S" 
+                            class="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none bg-white font-medium">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Correo Electrónico (Opcional)</label>
+                        <input type="email" id="create-client-email" placeholder="cliente@correo.com" 
+                            class="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none bg-white font-medium">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Origen / Área del Pendiente *</label>
+                    <select id="create-channel" required class="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none bg-white font-medium">
+                        <option value="" disabled selected>Selecciona el área u origen...</option>
+                        <option value="Correo">Correo</option>
+                        <option value="WhatsApp">WhatsApp</option>
+                        <option value="Recepción">Recepción</option>
+                        <option value="Facturación">Facturación</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Motivo Predeterminado (Opcional)</label>
+                    <select id="create-preset-reason" onchange="toggleCustomReason('create')" class="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none bg-white font-medium">
+                        <option value="" disabled selected>Selecciona una opción predeterminada...</option>
+                        <option value="Se envió liquidación">Se envió liquidación</option>
+                        <option value="Sin precompra">Sin precompra</option>
+                        <option value="Sin pago">Sin pago</option>
+                        <option value="Falta fecha">Falta fecha</option>
+                        <option value="Falta origen">Falta origen</option>
+                        <option value="Otro">Otro (Escribir detalle)...</option>
+                    </select>
+                </div>
+
+                <div id="create-custom-container" class="hidden">
+                    <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Detalla el motivo personalizado</label>
+                    <textarea id="create-custom-desc" rows="2" placeholder="Escribe aquí el detalle de la observación..." 
+                        class="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none resize-none"></textarea>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Persona que lo reporta (Opcional)</label>
+                    <select id="create-author" class="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none bg-white">
+                        <option value="" disabled selected>Selecciona un integrante...</option>
+                        <option value="Erika">Erika</option>
+                        <option value="Gabriela">Gabriela</option>
+                        <option value="Jenny">Jenny</option>
+                        <option value="Adriana">Adriana</option>
+                        <option value="Jose">Jose</option>
+                        <option value="Lorena">Lorena</option>
+                        <option value="Clara">Clara</option>
+                        <option value="Cristina">Cristina</option>
+                        <option value="Natalia">Natalia</option>
+                        <option value="Gloria">Gloria</option>
+                        <option value="German">German</option>
+                        <option value="Johana">Johana</option>
+                        <option value="Jenifer">Jenifer</option>
+                    </select>
+                </div>
+
+                <div class="pt-3 flex items-center justify-end space-x-3">
+                    <button type="button" onclick="toggleModal('modal-create', false)" 
+                        class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">
+                        Cancelar
+                    </button>
+                    <button type="submit" 
+                        class="px-5 py-2 text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-sm transition-colors flex items-center space-x-1.5">
+                        <i data-lucide="check" class="w-4 h-4"></i>
+                        <span>Guardar Pendiente</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Resolver Pendiente -->
+    <div id="modal-resolve" class="fixed inset-0 z-50 hidden modal-backdrop flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden transform transition-all">
+            <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-emerald-50/50">
+                <h3 class="font-bold text-emerald-900 flex items-center space-x-2">
+                    <i data-lucide="check-circle" class="w-5 h-5 text-emerald-600"></i>
+                    <span>Marcar Solución (Chulo)</span>
+                </h3>
+                <button onclick="toggleModal('modal-resolve', false)" class="text-slate-400 hover:text-slate-600 rounded-lg p-1 hover:bg-slate-100">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            
+            <form id="form-resolve" onsubmit="handleResolveTask(event)" class="p-6 space-y-4">
+                <input type="hidden" id="resolve-task-id">
+
+                <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                    <p class="text-xs text-slate-500 font-semibold uppercase">Pendiente seleccionado:</p>
+                    <p id="resolve-task-title" class="text-sm font-bold text-slate-800 mt-0.5"></p>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Motivo de Solución Predeterminado (Opcional)</label>
+                    <select id="resolve-preset-reason" onchange="toggleCustomReason('resolve')" class="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white font-medium">
+                        <option value="" disabled selected>Selecciona una respuesta de solución...</option>
+                        <option value="Pago">Pago</option>
+                        <option value="Confirmaron fecha">Confirmaron fecha</option>
+                        <option value="Confirmaron origen o destino">Confirmaron origen o destino</option>
+                        <option value="Otro">Otro (Escribir detalle)...</option>
+                    </select>
+                </div>
+
+                <div id="resolve-custom-container" class="hidden">
+                    <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Escribe la solución detallada</label>
+                    <textarea id="resolve-custom-desc" rows="2" placeholder="Explica cómo se resolvió exactamente..." 
+                        class="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none resize-none"></textarea>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Persona que lo resolvió (Opcional)</label>
+                    <select id="resolve-author" class="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white">
+                        <option value="" disabled selected>Selecciona tu nombre...</option>
+                        <option value="Erika">Erika</option>
+                        <option value="Gabriela">Gabriela</option>
+                        <option value="Jenny">Jenny</option>
+                        <option value="Adriana">Adriana</option>
+                        <option value="Jose">Jose</option>
+                        <option value="Lorena">Lorena</option>
+                        <option value="Clara">Clara</option>
+                        <option value="Cristina">Cristina</option>
+                        <option value="Natalia">Natalia</option>
+                        <option value="Gloria">Gloria</option>
+                        <option value="German">German</option>
+                        <option value="Johana">Johana</option>
+                        <option value="Jenifer">Jenifer</option>
+                    </select>
+                </div>
+
+                <div class="pt-3 flex items-center justify-end space-x-3">
+                    <button type="button" onclick="toggleModal('modal-resolve', false)" 
+                        class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">
+                        Cancelar
+                    </button>
+                    <button type="submit" 
+                        class="px-5 py-2 text-sm font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm transition-colors flex items-center space-x-1.5">
+                        <i data-lucide="check-check" class="w-4 h-4"></i>
+                        <span>Marcar como Resuelto</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Script principal de la App -->
+    <script>
+        const STORAGE_KEY_TASKS = 'equipo_pendientes_canales_v4';
+        const STORAGE_KEY_EMISIONES = 'equipo_emisiones_vivo_v2';
+
+        const TEAM_MEMBERS = [
+            "Erika", "Gabriela", "Jenny", "Adriana", "Jose", "Lorena", 
+            "Clara", "Cristina", "Natalia", "Gloria", "German", "Johana", "Jenifer"
+        ];
+
+        let tasks = JSON.parse(localStorage.getItem(STORAGE_KEY_TASKS)) || [];
+
+        // Estado inicial de emisiones por integrante
+        let emisionesData = JSON.parse(localStorage.getItem(STORAGE_KEY_EMISIONES)) || {};
+        
+        // Inicializar o normalizar propiedades de cada integrante
+        TEAM_MEMBERS.forEach(name => {
+            if (!emisionesData[name]) {
+                emisionesData[name] = {
+                    initialCount: 10,
+                    intervalMinutes: 5,
+                    startTime: null,
+                    elapsedBeforePause: 0,
+                    paused: false,
+                    active: false,
+                    notifiedZero: false,
+                    workStatus: 'Activo'
+                };
+            } else {
+                if (typeof emisionesData[name].paused === 'undefined') emisionesData[name].paused = false;
+                if (typeof emisionesData[name].elapsedBeforePause === 'undefined') emisionesData[name].elapsedBeforePause = 0;
+                if (typeof emisionesData[name].notifiedZero === 'undefined') emisionesData[name].notifiedZero = false;
+                if (!emisionesData[name].workStatus) emisionesData[name].workStatus = 'Activo';
+            }
+        });
+
+        let currentCategory = 'all';
+
+        window.onload = function() {
+            saveToStorage();
+            render();
+            renderEmisionesTable();
+            setInterval(updateEmisionesRealtime, 1000);
+        };
+
+        function saveToStorage() {
+            localStorage.setItem(STORAGE_KEY_TASKS, JSON.stringify(tasks));
+            localStorage.setItem(STORAGE_KEY_EMISIONES, JSON.stringify(emisionesData));
+        }
+
+        // Sonido de alerta sintetizado (Web Audio API)
+        function playAlertSound() {
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                const ctx = new AudioCtx();
+                const notes = [587.33, 880]; // Re5 -> La5
+
+                notes.forEach((freq, idx) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, ctx.currentTime + idx * 0.16);
+
+                    gain.gain.setValueAtTime(0.001, ctx.currentTime + idx * 0.16);
+                    gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + idx * 0.16 + 0.03);
+                    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + idx * 0.16 + 0.45);
+
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(ctx.currentTime + idx * 0.16);
+                    osc.stop(ctx.currentTime + idx * 0.16 + 0.5);
+                });
+            } catch (e) {
+                console.warn('No se pudo reproducir el audio automáticamente:', e);
+            }
+        }
+
+        function showToastNotification(message) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = 'pointer-events-auto bg-emerald-600 text-white px-4 py-3 rounded-xl shadow-lg border border-emerald-500 flex items-center gap-3 text-sm font-semibold transition-all duration-300';
+            toast.innerHTML = `
+                <i data-lucide="bell-ring" class="w-5 h-5 text-emerald-100 shrink-0"></i>
+                <span>${message}</span>
+            `;
+            container.appendChild(toast);
+            lucide.createIcons();
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 6000);
+        }
+
+        function switchMainView(view) {
+            const btnPendientes = document.getElementById('nav-btn-pendientes');
+            const btnEmisiones = document.getElementById('nav-btn-emisiones');
+            const viewPendientes = document.getElementById('view-pendientes');
+            const viewEmisiones = document.getElementById('view-emisiones');
+
+            if (view === 'pendientes') {
+                viewPendientes.classList.add('active');
+                viewEmisiones.classList.remove('active');
+                btnPendientes.className = "px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-white text-slate-800 shadow-sm";
+                btnEmisiones.className = "px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-600 hover:text-slate-900";
+            } else {
+                viewPendientes.classList.remove('active');
+                viewEmisiones.classList.add('active');
+                btnEmisiones.className = "px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-white text-slate-800 shadow-sm";
+                btnPendientes.className = "px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-600 hover:text-slate-900";
+            }
+        }
+
+        function toggleModal(modalId, show) {
+            const modal = document.getElementById(modalId);
+            if (show) modal.classList.remove('hidden');
+            else modal.classList.add('hidden');
+        }
+
+        function toggleCustomReason(type) {
+            const select = document.getElementById(`${type}-preset-reason`);
+            const customContainer = document.getElementById(`${type}-custom-container`);
+            const customInput = document.getElementById(`${type}-custom-desc`);
+
+            if (select.value === 'Otro') {
+                customContainer.classList.remove('hidden');
+            } else {
+                customContainer.classList.add('hidden');
+                customInput.value = '';
+            }
+        }
+
+        function switchCategory(category) {
+            currentCategory = category;
+            const tabIds = {
+                'all': 'tab-all',
+                'Correo': 'tab-correo',
+                'WhatsApp': 'tab-whatsapp',
+                'Recepción': 'tab-recepcion',
+                'Facturación': 'tab-facturacion',
+                'resolved': 'tab-resolved'
+            };
+
+            Object.keys(tabIds).forEach(key => {
+                const btn = document.getElementById(tabIds[key]);
+                if (key === category) btn.classList.add('active');
+                else btn.classList.remove('active');
+            });
+
+            render();
+        }
+
+        function handleCreateTask(e) {
+            e.preventDefault();
+            const clientName = document.getElementById('create-client-name').value.trim();
+            const clientEmail = document.getElementById('create-client-email').value.trim();
+            const channel = document.getElementById('create-channel').value;
+            const presetReason = document.getElementById('create-preset-reason').value;
+            const customDesc = document.getElementById('create-custom-desc').value.trim();
+            const reportedBy = document.getElementById('create-author').value;
+
+            if (!channel) return;
+
+            let finalReason = 'Sin motivo especificado';
+            if (presetReason === 'Otro') {
+                finalReason = customDesc || 'Sin motivo especificado';
+            } else if (presetReason) {
+                finalReason = presetReason;
+            }
+
+            const newTask = {
+                id: Date.now().toString(),
+                clientName: clientName || 'Cliente General',
+                clientEmail: clientEmail || '',
+                channel,
+                reason: finalReason,
+                reportedBy: reportedBy || 'Sin asignar',
+                status: 'active',
+                createdAt: new Date().toISOString(),
+                solution: '',
+                resolvedBy: '',
+                resolvedAt: null
+            };
+
+            tasks.unshift(newTask);
+            saveToStorage();
+            toggleModal('modal-create', false);
+            document.getElementById('form-create').reset();
+            document.getElementById('create-custom-container').classList.add('hidden');
+            render();
+        }
+
+        function openResolveModal(id) {
+            const task = tasks.find(t => t.id === id);
+            if (!task) return;
+
+            document.getElementById('resolve-task-id').value = task.id;
+            document.getElementById('resolve-task-title').textContent = `${task.clientName} (${task.reason})`;
+            document.getElementById('resolve-preset-reason').value = '';
+            document.getElementById('resolve-custom-desc').value = '';
+            document.getElementById('resolve-author').value = '';
+            document.getElementById('resolve-custom-container').classList.add('hidden');
+
+            toggleModal('modal-resolve', true);
+        }
+
+        function handleResolveTask(e) {
+            e.preventDefault();
+            const id = document.getElementById('resolve-task-id').value;
+            const presetReason = document.getElementById('resolve-preset-reason').value;
+            const customDesc = document.getElementById('resolve-custom-desc').value.trim();
+            const resolvedBy = document.getElementById('resolve-author').value;
+
+            let finalSolution = 'Resuelto sin observaciones';
+            if (presetReason === 'Otro') {
+                finalSolution = customDesc || 'Resuelto sin observaciones';
+            } else if (presetReason) {
+                finalSolution = presetReason;
+            }
+
+            tasks = tasks.map(t => {
+                if (t.id === id) {
+                    return {
+                        ...t,
+                        status: 'resolved',
+                        solution: finalSolution,
+                        resolvedBy: resolvedBy || 'Sin asignar',
+                        resolvedAt: new Date().toISOString()
+                    };
+                }
+                return t;
+            });
+
+            saveToStorage();
+            toggleModal('modal-resolve', false);
+            render();
+        }
+
+        function deleteTask(id) {
+            tasks = tasks.filter(t => t.id !== id);
+            saveToStorage();
+            render();
+        }
+
+        // LÓGICA DE EMISIONES EN VIVO
+        function updateEmisionConfig(name, field, val) {
+            if (!emisionesData[name]) return;
+            emisionesData[name][field] = parseFloat(val) || 0;
+            saveToStorage();
+        }
+
+        function updateWorkStatus(name, val) {
+            if (!emisionesData[name]) return;
+            emisionesData[name].workStatus = val;
+            saveToStorage();
+        }
+
+        function resetEmisionTimer(name) {
+            const countInput = document.getElementById(`em-count-${name}`);
+            const minInput = document.getElementById(`em-min-${name}`);
+            
+            const countVal = parseInt(countInput.value) || 0;
+            const minVal = parseFloat(minInput.value) || 5;
+
+            emisionesData[name] = {
+                ...emisionesData[name],
+                initialCount: countVal,
+                intervalMinutes: minVal,
+                startTime: Date.now(),
+                elapsedBeforePause: 0,
+                paused: false,
+                active: true,
+                notifiedZero: countVal === 0
+            };
+
+            if (countVal === 0) {
+                playAlertSound();
+                showToastNotification(`¡${name} está Al día!`);
+            }
+
+            saveToStorage();
+            renderEmisionesTable();
+        }
+
+        function togglePauseEmision(name) {
+            const data = emisionesData[name];
+            if (!data || !data.active) return;
+
+            if (!data.paused) {
+                data.elapsedBeforePause = (data.elapsedBeforePause || 0) + (Date.now() - data.startTime);
+                data.startTime = null;
+                data.paused = true;
+            } else {
+                data.startTime = Date.now();
+                data.paused = false;
+            }
+
+            saveToStorage();
+            renderEmisionesTable();
+        }
+
+        function getEmisionStatus(data) {
+            if (!data || !data.active) {
+                return { current: data.initialCount || 0, text: 'En espera / Inactivo', badgeClass: 'bg-slate-100 text-slate-600' };
+            }
+
+            const elapsedMs = data.paused
+                ? (data.elapsedBeforePause || 0)
+                : (data.elapsedBeforePause || 0) + (Date.now() - (data.startTime || Date.now()));
+
+            const intervalMs = (data.intervalMinutes || 5) * 60 * 1000;
+            const stepsPassed = Math.floor(elapsedMs / intervalMs);
+            const currentCount = Math.max(0, data.initialCount - stepsPassed);
+
+            if (currentCount === 0) {
+                return { current: 0, text: 'Al día', badgeClass: 'bg-emerald-100 text-emerald-800 font-bold' };
+            }
+
+            const timeIntoCurrentStep = elapsedMs % intervalMs;
+            const timeLeftMs = intervalMs - timeIntoCurrentStep;
+            const minutesLeft = Math.floor(timeLeftMs / (60 * 1000));
+            const secondsLeft = Math.floor((timeLeftMs % (60 * 1000)) / 1000);
+            const timerText = `${minutesLeft}m ${secondsLeft < 10 ? '0' : ''}${secondsLeft}s`;
+
+            if (data.paused) {
+                return { current: currentCount, text: `Pausado (${timerText})`, badgeClass: 'bg-amber-100 text-amber-800' };
+            }
+
+            return { current: currentCount, text: `Próximo: ${timerText}`, badgeClass: 'bg-blue-100 text-blue-800' };
+        }
+
+        function renderEmisionesTable() {
+            const tbody = document.getElementById('emisiones-table-body');
+            tbody.innerHTML = '';
+
+            TEAM_MEMBERS.forEach(name => {
+                const data = emisionesData[name];
+                const statusInfo = getEmisionStatus(data);
+                const canPause = data.active && statusInfo.current > 0;
+
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50/80 transition-colors";
+
+                tr.innerHTML = `
+                    <td class="py-3 px-4 font-bold text-slate-800 flex items-center gap-2">
+                        <div class="w-8 h-8 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-xs uppercase">
+                            ${name.substring(0,2)}
+                        </div>
+                        <span>${name}</span>
+                    </td>
+                    <td class="py-3 px-4">
+                        <input type="number" id="em-count-${name}" value="${data.initialCount}" min="0" max="999"
+                            onchange="updateEmisionConfig('${name}', 'initialCount', this.value)"
+                            class="w-20 px-3 py-1.5 border border-slate-200 rounded-lg text-sm font-bold text-slate-800 focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                    </td>
+                    <td class="py-3 px-4">
+                        <input type="number" id="em-min-${name}" value="${data.intervalMinutes}" step="0.5" min="0.1" max="1440"
+                            onchange="updateEmisionConfig('${name}', 'intervalMinutes', this.value)"
+                            class="w-24 px-3 py-1.5 border border-slate-200 rounded-lg text-sm font-bold text-slate-800 focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                    </td>
+                    <td class="py-3 px-4 text-center">
+                        <div class="inline-flex items-center gap-3 bg-slate-50 px-4 py-1.5 rounded-xl border border-slate-200">
+                            <span class="text-xl font-black text-slate-900" id="em-val-${name}">${statusInfo.current}</span>
+                            <span class="text-xs font-semibold px-2.5 py-0.5 rounded-md ${statusInfo.badgeClass}" id="em-text-${name}">${statusInfo.text}</span>
+                        </div>
+                    </td>
+                    <td class="py-3 px-4 text-center">
+                        <select onchange="updateWorkStatus('${name}', this.value)" 
+                            class="px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-brand-500 focus:outline-none bg-white shadow-sm">
+                            <option value="Activo" ${data.workStatus === 'Activo' ? 'selected' : ''}>🟢 Activo</option>
+                            <option value="Ocupado"${data.workStatus === 'Ocupado' ? 'selected' : ''}>🔴 Ocupado</option>
+                            <option value="Descansando" ${data.workStatus === 'Descansando' ? 'selected' : ''}>☕ Descansando</option>
+                            <option value="WhatsApp Bogotá" ${data.workStatus === 'WhatsApp Bogotá' ? 'selected' : ''}>💬 WA Bogotá</option>
+                            <option value="WhatsApp Costa" ${data.workStatus === 'WhatsApp Costa' ? 'selected' : ''}>💬 WA Costa</option>
+                            <option value="Incapacidad" ${data.workStatus === 'Incapacidad' ? 'selected' : ''}>🏥 Incapacidad</option>
+                        </select>
+                    </td>
+                    <td class="py-3 px-4 text-center">
+                        <div class="inline-flex items-center justify-center gap-2">
+                            <button onclick="resetEmisionTimer('${name}')" title="Iniciar / Reiniciar Descontador"
+                                class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold p-2.5 rounded-xl shadow-sm transition-all active:scale-95 inline-flex items-center justify-center">
+                                <i data-lucide="check" class="w-4 h-4"></i>
+                            </button>
+                            <button id="em-pause-btn-${name}" onclick="togglePauseEmision('${name}')" 
+                                ${!canPause ? 'disabled' : ''}
+                                title="${data.paused ? 'Reanudar Contador' : 'Pausar Contador'}"
+                                class="${data.paused 
+                                    ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+                                    : 'bg-amber-500 hover:bg-amber-600 text-white'} disabled:opacity-35 disabled:pointer-events-none font-bold p-2.5 rounded-xl shadow-sm transition-all active:scale-95 inline-flex items-center justify-center">
+                                <i data-lucide="${data.paused ? 'play' : 'pause'}" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </td>
+                `;
+
+                tbody.appendChild(tr);
+            });
+
+            lucide.createIcons();
+        }
+
+        function updateEmisionesRealtime() {
+            let stateChanged = false;
+
+            TEAM_MEMBERS.forEach(name => {
+                const data = emisionesData[name];
+                const statusInfo = getEmisionStatus(data);
+                
+                if (data.active && statusInfo.current === 0 && !data.notifiedZero) {
+                    data.notifiedZero = true;
+                    data.paused = false;
+                    stateChanged = true;
+                    playAlertSound();
+                    showToastNotification(`¡${name} completó sus emisiones y está Al día!`);
+                }
+
+                const valEl = document.getElementById(`em-val-${name}`);
+                const textEl = document.getElementById(`em-text-${name}`);
+                const pauseBtn = document.getElementById(`em-pause-btn-${name}`);
+
+                if (valEl) valEl.textContent = statusInfo.current;
+                if (textEl) {
+                    textEl.textContent = statusInfo.text;
+                    textEl.className = `text-xs font-semibold px-2.5 py-0.5 rounded-md ${statusInfo.badgeClass}`;
+                }
+                if (pauseBtn) {
+                    pauseBtn.disabled = !(data.active && statusInfo.current > 0);
+                }
+            });
+
+            if (stateChanged) {
+                saveToStorage();
+            }
+        }
+
+        function formatDate(isoString) {
+            if (!isoString) return '';
+            const d = new Date(isoString);
+            return d.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+        }
+
+        function getChannelBadge(channel) {
+            switch(channel) {
+                case 'Correo': return '<span class="bg-sky-100 text-sky-800 text-xs px-2.5 py-1 rounded-lg font-bold flex items-center"><i data-lucide="mail" class="w-3 h-3 mr-1"></i> Correo</span>';
+                case 'WhatsApp': return '<span class="bg-emerald-100 text-emerald-800 text-xs px-2.5 py-1 rounded-lg font-bold flex items-center"><i data-lucide="message-square" class="w-3 h-3 mr-1"></i> WhatsApp</span>';
+                case 'Recepción': return '<span class="bg-indigo-100 text-indigo-800 text-xs px-2.5 py-1 rounded-lg font-bold flex items-center"><i data-lucide="building" class="w-3 h-3 mr-1"></i> Recepción</span>';
+                case 'Facturación': return '<span class="bg-amber-100 text-amber-800 text-xs px-2.5 py-1 rounded-lg font-bold flex items-center"><i data-lucide="receipt" class="w-3 h-3 mr-1"></i> Facturación</span>';
+                default: return '<span class="bg-slate-100 text-slate-800 text-xs px-2.5 py-1 rounded-lg font-bold">General</span>';
+            }
+        }
+
+        function render() {
+            const container = document.getElementById('tasks-container');
+            const emptyState = document.getElementById('empty-state');
+            const searchVal = document.getElementById('search-input').value.toLowerCase();
+
+            const activeTasks = tasks.filter(t => t.status === 'active');
+            const countAllActive = activeTasks.length;
+            const countCorreo = activeTasks.filter(t => t.channel === 'Correo').length;
+            const countWhatsapp = activeTasks.filter(t => t.channel === 'WhatsApp').length;
+            const countRecepcion = activeTasks.filter(t => t.channel === 'Recepción').length;
+            const countFacturacion = activeTasks.filter(t => t.channel === 'Facturación').length;
+            const countResolved = tasks.filter(t => t.status === 'resolved').length;
+
+            document.getElementById('badge-all').textContent = countAllActive;
+            document.getElementById('badge-correo').textContent = countCorreo;
+            document.getElementById('badge-whatsapp').textContent = countWhatsapp;
+            document.getElementById('badge-recepcion').textContent = countRecepcion;
+            document.getElementById('badge-facturacion').textContent = countFacturacion;
+            document.getElementById('badge-resolved').textContent = countResolved;
+
+            document.getElementById('stat-total').textContent = tasks.length;
+            document.getElementById('stat-active').textContent = countAllActive;
+            document.getElementById('stat-resolved').textContent = countResolved;
+
+            const channelCounts = [
+                { name: 'Correo', count: countCorreo },
+                { name: 'WhatsApp', count: countWhatsapp },
+                { name: 'Recepción', count: countRecepcion },
+                { name: 'Facturación', count: countFacturacion }
+            ].sort((a,b) => b.count - a.count);
+
+            document.getElementById('stat-top-channel').textContent = channelCounts[0].count > 0 ? channelCounts[0].name : '-';
+
+            const filteredTasks = tasks.filter(t => {
+                let matchesCategory = false;
+                if (currentCategory === 'all') {
+                    matchesCategory = t.status === 'active';
+                } else if (currentCategory === 'resolved') {
+                    matchesCategory = t.status === 'resolved';
+                } else {
+                    matchesCategory = t.status === 'active' && t.channel === currentCategory;
+                }
+
+                const matchesSearch = (t.clientName && t.clientName.toLowerCase().includes(searchVal)) || 
+                                      (t.clientEmail && t.clientEmail.toLowerCase().includes(searchVal)) || 
+                                      (t.reason && t.reason.toLowerCase().includes(searchVal)) ||
+                                      (t.solution && t.solution.toLowerCase().includes(searchVal)) ||
+                                      (t.reportedBy && t.reportedBy.toLowerCase().includes(searchVal)) ||
+                                      (t.resolvedBy && t.resolvedBy.toLowerCase().includes(searchVal));
+                return matchesCategory && matchesSearch;
+            });
+
+            container.innerHTML = '';
+
+            if (filteredTasks.length === 0) {
+                emptyState.classList.remove('hidden');
+            } else {
+                emptyState.classList.add('hidden');
+                
+                filteredTasks.forEach(t => {
+                    const isResolved = t.status === 'resolved';
+
+                    const card = document.createElement('div');
+                    card.className = `bg-white rounded-2xl border transition-all duration-200 shadow-sm hover:shadow-md flex flex-col justify-between overflow-hidden ${
+                        isResolved ? 'border-emerald-200 bg-emerald-50/10' : 'border-slate-200'
+                    }`;
+
+                    card.innerHTML = `
+                        <div class="p-5">
+                            <div class="flex items-start justify-between gap-3 mb-2">
+                                ${getChannelBadge(t.channel)}
+                                <span class="text-xs text-slate-400 font-medium">${formatDate(t.createdAt)}</span>
+                            </div>
+
+                            <h4 class="font-bold text-slate-900 text-lg mb-0.5 leading-snug">${t.clientName || 'Cliente General'}</h4>
+                            ${t.clientEmail ? `
+                                <p class="text-xs text-blue-600 font-medium mb-3 flex items-center">
+                                    <i data-lucide="mail" class="w-3 h-3 mr-1"></i> ${t.clientEmail}
+                                </p>
+                            ` : `<div class="mb-2"></div>`}
+                            
+                            <div class="mb-4 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                <p class="text-xs font-bold text-slate-500 uppercase tracking-wide mb-0.5">Motivo del Pendiente:</p>
+                                <p class="text-sm font-semibold text-slate-800">${t.reason || t.title}</p>
+                                <p class="text-xs text-slate-400 mt-2 font-medium">Reportado por: <span class="text-slate-700 font-semibold">${t.reportedBy}</span></p>
+                            </div>
+
+                            ${isResolved ? `
+                                <div class="bg-emerald-50 p-3 rounded-xl border border-emerald-100 text-emerald-900">
+                                    <p class="text-xs font-bold text-emerald-700 uppercase tracking-wide mb-1 flex items-center">
+                                        <i data-lucide="shield-check" class="w-3.5 h-3.5 mr-1 text-emerald-600"></i> Solución Registrada:
+                                    </p>
+                                    <p class="text-sm text-emerald-950 font-bold">${t.solution}</p>
+                                    <div class="mt-2 pt-2 border-t border-emerald-200/60 flex items-center justify-between text-xs text-emerald-700">
+                                        <span>Resuelto por: <strong>${t.resolvedBy}</strong></span>
+                                        <span>${formatDate(t.resolvedAt)}</span>
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+
+                        <div class="px-5 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+                            <button onclick="deleteTask('${t.id}')" class="text-slate-400 hover:text-red-500 text-xs font-medium flex items-center space-x-1 transition-colors">
+                                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                <span>Eliminar</span>
+                            </button>
+
+                            ${!isResolved ? `
+                                <button onclick="openResolveModal('${t.id}')" 
+                                    class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center space-x-1.5 shadow-sm transition-all active:scale-95">
+                                    <i data-lucide="check-square" class="w-4 h-4"></i>
+                                    <span>Resolver (Chulo)</span>
+                                </button>
+                            ` : `
+                                <span class="text-xs font-bold text-emerald-600 flex items-center">
+                                    <i data-lucide="check-check" class="w-4 h-4 mr-1"></i> Completado
+                                </span>
+                            `}
+                        </div>
+                    `;
+
+                    container.appendChild(card);
+                });
+            }
+
+            lucide.createIcons();
+        }
+    </script>
+</body>
+</html>
